@@ -1,0 +1,27 @@
+apiVersion: networking.istio.io/v1alpha3
+kind: VirtualService
+metadata:
+  name: weather-vs
+spec:
+  gateways:
+    - "weather-gateway"
+  hosts:
+    - "weather.blackbyte.live"
+  http:
+    - name: canary
+      match:
+        - uri:
+            prefix: "/"
+      route:
+        - destination:
+            host: weather.default.svc.cluster.local
+            subset: stable
+            port:
+              number: 5000
+          weight: 90
+        - destination:
+            host: weather.default.svc.cluster.local
+            subset: canary
+            port:
+              number: 5000
+          weight: 10

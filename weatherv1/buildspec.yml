@@ -1,0 +1,40 @@
+version: 0.2
+phases:
+  pre_build:
+    commands:
+      - echo Logging in to Amazon ECR
+      - aws --version
+      # login into AWS ECR
+      - aws ecr get-login-password --region us-east-1 | docker login --username AWS --password-stdin 531477552916.dkr.ecr.us-east-1.amazonaws.com
+      - REPOSITORY_URI=531477552916.dkr.ecr.us-east-1.amazonaws.com/weatherv1
+      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - IMAGE_TAG=$CODEBUILD_BUILD_NUMBER
+  build:
+    commands:
+      - echo Build Started on `date`
+      - echo Building Docker image
+      - docker build -t $REPOSITORY_URI:$IMAGE_TAG .
+  post_build:
+    commands:
+      - echo Build completed on `date`
+      - echo Pushing the Docker image
+      - docker push $REPOSITORY_URI:$IMAGE_TAG
+      - git config --global user.email "rachidmoyse1@hotmail.com"
+      - git config --global user.name "Rachid Moyse"
+      - git config --global credential.helper '!aws codecommit credential-helper $@'
+      - git config --global credential.UseHttpPath true
+      - mkdir ops
+      - cd ops
+      - git clone https://git-codecommit.us-east-1.amazonaws.com/v1/repos/ops .
+      - cd manifests/overlays/stable
+      # changing in each build the image in the kubernetes definition file
+      - old_image_string="$(grep -P ^\.\*531477552916.dkr.ecr.us-east-1.amazonaws.com/weatherv1\.\*\$ deployment.yaml)"
+      - old_image_tag=${old_image_string##*:}
+      - echo $old_image_tag
+      - sed -i 's/weatherv1:'$old_image_tag'/weatherv1:'$IMAGE_TAG'/g' deployment.yaml
+      - git add deployment.yaml
+      - git commit -m "Update image version in kubernetes YAML file"
+      - git push -u origin main
+      - echo Writing image definitions file...
+      - printf '[{"name":"today-container","imageUri":"%s"}]' $REPOSITORY_URI:$IMAGE_TAG > imagedefinitions.json
+      - cat imagedefinitions.json
